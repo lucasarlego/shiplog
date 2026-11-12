@@ -1,0 +1,118 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Expõe os tokens como utilitários do Tailwind (bg-surface, text-fg-muted, rounded-lg, duration-base...) */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-overlay: var(--overlay);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-soft-fg: var(--primary-soft-fg);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-soft-fg: var(--accent-soft-fg);
+  --color-st-rascunho: var(--st-rascunho);
+  --color-st-rascunho-soft: var(--st-rascunho-soft);
+  --color-st-pronto: var(--st-pronto);
+  --color-st-pronto-soft: var(--st-pronto-soft);
+  --color-st-publicado: var(--st-publicado);
+  --color-st-publicado-soft: var(--st-publicado-soft);
+  --color-st-erro: var(--st-erro);
+  --color-st-erro-soft: var(--st-erro-soft);
+  --color-st-novos: var(--st-novos);
+  --color-st-novos-soft: var(--st-novos-soft);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-glow: var(--shadow-glow);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 17px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+  --text-4xl: 38px;
+
+  --ease-out: var(--ease-out);
+  --ease-in-out: var(--ease-in-out);
+  --default-transition-duration: var(--dur-fast);
+  --default-transition-timing-function: var(--ease-out);
+}
+
+@utility duration-fast { transition-duration: var(--dur-fast); }
+@utility duration-base { transition-duration: var(--dur-base); }
+@utility duration-slow { transition-duration: var(--dur-slow); }
+@utility bg-grad-primary { background-image: var(--grad-primary); }
+
+/* Borda em gradiente para card selecionado / geração ativa (RUI-02) */
+@utility border-grad {
+  border-color: transparent;
+  background:
+    linear-gradient(var(--surface), var(--surface)) padding-box,
+    var(--grad-primary) border-box;
+}
+
+@layer base {
+  html { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+  body { background: var(--bg); color: var(--fg); font-size: var(--text-base); line-height: 1.55; min-width: 768px; }
+  ::selection { background: var(--primary-soft); color: var(--primary-soft-fg); }
+  :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: var(--radius-sm); }
+  code, pre, kbd, .font-mono { font-family: var(--font-mono); }
+  * { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+}
+
+/* Skeleton (RUI-11) */
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 0%, var(--surface-3) 50%, var(--surface-2) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s var(--ease-in-out) infinite;
+  border-radius: var(--radius-md);
+}
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* Markdown renderizado do artigo */
+.prose-md { line-height: 1.75; font-size: var(--text-md); color: var(--fg); }
+.prose-md h1, .prose-md h2, .prose-md h3 { font-weight: 650; letter-spacing: -0.01em; margin: 1.6em 0 0.5em; line-height: 1.25; }
+.prose-md h1 { font-size: var(--text-2xl); }
+.prose-md h2 { font-size: var(--text-xl); }
+.prose-md h3 { font-size: var(--text-lg); }
+.prose-md p, .prose-md ul, .prose-md ol, .prose-md blockquote, .prose-md pre, .prose-md table { margin: 0.9em 0; }
+.prose-md ul { list-style: disc; padding-left: 1.4em; }
+.prose-md ol { list-style: decimal; padding-left: 1.4em; }
+.prose-md a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+.prose-md blockquote { border-left: 3px solid var(--border-strong); padding-left: 1em; color: var(--fg-muted); }
+.prose-md code { font-size: 0.88em; background: var(--surface-3); padding: 0.12em 0.38em; border-radius: var(--radius-sm); }
+.prose-md pre { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px; overflow-x: auto; font-size: var(--text-sm); line-height: 1.6; }
+.prose-md pre code { background: none; padding: 0; }
+.prose-md table { border-collapse: collapse; width: 100%; font-size: var(--text-sm); }
+.prose-md th, .prose-md td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+.prose-md hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}

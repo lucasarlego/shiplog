@@ -1,0 +1,109 @@
+/* Design tokens do Shiplog (spec 005 §3.1, RUI-01..RUI-05).
+   Única fonte de cores, raios, sombras, durações e curvas. Componentes nunca usam valores literais. */
+
+:root {
+  /* Neutros */
+  --bg: oklch(0.99 0.002 286);
+  --surface: oklch(1 0 0);
+  --surface-2: oklch(0.975 0.003 286);
+  --surface-3: oklch(0.955 0.004 286);
+  --border: oklch(0.915 0.005 286);
+  --border-strong: oklch(0.86 0.007 286);
+  --fg: oklch(0.2 0.012 286);
+  --fg-muted: oklch(0.45 0.014 286);
+  --fg-subtle: oklch(0.56 0.012 286);
+  --overlay: oklch(0.2 0.02 286 / 0.35);
+
+  /* Primária: violeta elétrico */
+  --primary: oklch(0.54 0.25 293);
+  --primary-hover: oklch(0.49 0.25 293);
+  --primary-fg: oklch(0.99 0 0);
+  --primary-soft: oklch(0.95 0.035 293);
+  --primary-soft-fg: oklch(0.42 0.2 293);
+
+  /* Destaque: ciano */
+  --accent: oklch(0.6 0.12 215);
+  --accent-soft: oklch(0.95 0.03 210);
+  --accent-soft-fg: oklch(0.42 0.09 220);
+
+  /* Status (RUI-03) — sempre com rótulo + ícone */
+  --st-rascunho: oklch(0.5 0.02 260);
+  --st-rascunho-soft: oklch(0.95 0.006 260);
+  --st-pronto: oklch(0.5 0.13 235);
+  --st-pronto-soft: oklch(0.95 0.03 235);
+  --st-publicado: oklch(0.5 0.13 155);
+  --st-publicado-soft: oklch(0.95 0.04 155);
+  --st-erro: oklch(0.53 0.2 25);
+  --st-erro-soft: oklch(0.96 0.025 25);
+  --st-novos: oklch(0.52 0.13 65);
+  --st-novos-soft: oklch(0.96 0.045 85);
+
+  /* Gradiente (RUI-02): só botão principal, card selecionado e geração ativa */
+  --grad-primary: linear-gradient(135deg, oklch(0.54 0.25 293), oklch(0.6 0.2 260) 55%, oklch(0.65 0.14 215));
+
+  /* Raios */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  /* Sombras */
+  --shadow-sm: 0 1px 2px oklch(0.2 0.02 286 / 0.06);
+  --shadow-md: 0 1px 2px oklch(0.2 0.02 286 / 0.05), 0 4px 16px -4px oklch(0.2 0.02 286 / 0.1);
+  --shadow-lg: 0 2px 4px oklch(0.2 0.02 286 / 0.05), 0 16px 40px -12px oklch(0.2 0.02 286 / 0.22);
+  --shadow-glow: 0 6px 24px -6px oklch(0.54 0.25 293 / 0.55);
+
+  /* Movimento (RUI-12) */
+  --dur-fast: 150ms;
+  --dur-base: 220ms;
+  --dur-slow: 320ms;
+  --dur-slower: 400ms;
+  --dur-pulse: 1600ms; /* único loop permitido: indicador de geração ativa (RUI-12) */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* Tipografia (RUI-04) */
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular", monospace;
+}
+
+.dark {
+  --bg: oklch(0.145 0.005 286);
+  --surface: oklch(0.18 0.006 286);
+  --surface-2: oklch(0.21 0.007 286);
+  --surface-3: oklch(0.25 0.008 286);
+  --border: oklch(0.27 0.008 286);
+  --border-strong: oklch(0.34 0.01 286);
+  --fg: oklch(0.96 0.003 286);
+  --fg-muted: oklch(0.74 0.01 286);
+  --fg-subtle: oklch(0.63 0.012 286);
+  --overlay: oklch(0 0 0 / 0.6);
+
+  --primary: oklch(0.68 0.2 293);
+  --primary-hover: oklch(0.73 0.18 293);
+  --primary-fg: oklch(0.16 0.03 293);
+  --primary-soft: oklch(0.29 0.08 293);
+  --primary-soft-fg: oklch(0.86 0.09 293);
+
+  --accent: oklch(0.8 0.13 210);
+  --accent-soft: oklch(0.28 0.05 215);
+  --accent-soft-fg: oklch(0.88 0.08 210);
+
+  --st-rascunho: oklch(0.78 0.02 260);
+  --st-rascunho-soft: oklch(0.26 0.01 260);
+  --st-pronto: oklch(0.8 0.11 230);
+  --st-pronto-soft: oklch(0.28 0.05 235);
+  --st-publicado: oklch(0.8 0.14 155);
+  --st-publicado-soft: oklch(0.27 0.05 155);
+  --st-erro: oklch(0.75 0.15 25);
+  --st-erro-soft: oklch(0.29 0.06 25);
+  --st-novos: oklch(0.83 0.13 80);
+  --st-novos-soft: oklch(0.29 0.05 75);
+
+  --grad-primary: linear-gradient(135deg, oklch(0.62 0.23 293), oklch(0.63 0.19 262) 55%, oklch(0.72 0.14 212));
+
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
+  --shadow-md: 0 1px 2px oklch(0 0 0 / 0.35), 0 4px 16px -4px oklch(0 0 0 / 0.5);
+  --shadow-lg: 0 2px 4px oklch(0 0 0 / 0.35), 0 16px 40px -12px oklch(0 0 0 / 0.7);
+  --shadow-glow: 0 6px 28px -6px oklch(0.62 0.23 293 / 0.6);
+}

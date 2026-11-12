@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Sobe o Shiplog com um comando (Linux/macOS/WSL). Equivale a `make run`.
+set -euo pipefail
+cd "$(dirname "$0")"
+command -v uv >/dev/null || { echo "Instale o uv: https://docs.astral.sh/uv/"; exit 1; }
+[ -d .venv ] || uv sync
+if [ ! -f frontend/dist/index.html ]; then
+  command -v npm >/dev/null || { echo "Instale o Node.js (npm) para compilar a interface."; exit 1; }
+  (cd frontend && npm install && npm run build)
+fi
+exec uv run shiplog "$@"
