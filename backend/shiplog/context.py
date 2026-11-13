@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from .config import Paths
+from .config import HOST, Paths, resolve_port
 from .services import metadata
 from .services.generation import GenerationService
 from .services.health import HealthService, skill_instalada
@@ -14,6 +14,7 @@ from .services.jobs import JobQueue
 from .services.llm.base import LLMProvider
 from .services.llm.claude_cli import ClaudeCliProvider
 from .services.comments import CommentService
+from .services.contexto import ContextService
 from .services.profile import ProfileService
 from .services.projects import ProjectService
 from .services.prompts import PROMPT_BASE_ANTIGO, PROMPT_BASE_PADRAO
@@ -45,6 +46,7 @@ class AppContext:
     jobs: JobQueue
     profile: ProfileService
     comments: CommentService
+    contexto: ContextService
     reinicio_necessario: bool = False
 
 
@@ -80,4 +82,5 @@ def build_context(
     gen.posicao = jobs.posicao
     profile = ProfileService(dao, paths.data_dir / "perfil", llm, health.get)
     comments = CommentService(dao, paths.data_dir / "comentarios", llm, health.get)
-    return AppContext(paths, db, dao, versions, projects, health, gen, jobs, profile, comments)
+    contexto = ContextService(dao, projects, comments, f"http://{HOST}:{resolve_port()}")
+    return AppContext(paths, db, dao, versions, projects, health, gen, jobs, profile, comments, contexto)

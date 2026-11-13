@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "motion/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Clock, FolderGit2, GitBranch, Sparkles, Link2, PenLine } from "lucide-react";
+import { ArrowRight, Clock, Folder, FolderGit2, GitBranch, Sparkles, Link2, PenLine } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import type { ApiErro, Job, Projeto } from "@/lib/types";
@@ -308,7 +308,8 @@ function UrlBar({ grande = false, podeGerar }: { grande?: boolean; podeGerar: bo
 export function ProjectCard({ p, job }: { p: Projeto; job?: Job }) {
   const ativo = job ?? null;
   const livre = p.origem === "livre";
-  const Icone = livre ? PenLine : FolderGit2;
+  const local = p.origem === "local";
+  const Icone = livre ? PenLine : local ? Folder : FolderGit2;
   return (
     <motion.div variants={fadeUp} layout="position">
       <Link
@@ -326,7 +327,7 @@ export function ProjectCard({ p, job }: { p: Projeto; job?: Job }) {
           <div className="min-w-0 flex-1">
             <div className="truncate font-semibold tracking-tight">{p.nome}</div>
             <div className="truncate text-xs text-fg-subtle">
-              {livre ? "Sem repositório" : (p.url_repo ?? "").replace(/^https?:\/\//, "")}
+              {livre ? "Sem repositório" : local ? (p.caminho_local ?? "Pasta local") : (p.url_repo ?? "").replace(/^https?:\/\//, "")}
             </div>
           </div>
           <ArrowRight className="size-4 shrink-0 text-fg-subtle opacity-0 transition-opacity duration-fast group-hover:opacity-100" />

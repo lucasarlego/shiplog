@@ -8,7 +8,8 @@ export SHIPLOG_PORT := $(PORT)
 
 .DEFAULT_GOAL := help
 .PHONY: help install install-backend install-frontend install-skill backend frontend dev build run start stop \
-        test test-backend test-frontend check launcher launcher-remove logs clean
+        test test-backend test-frontend check launcher launcher-remove logs clean \
+        mcp-install mcp-remove mcp-inspect
 
 help: ## Lista os comandos
 	@awk 'BEGIN {FS = ":.*##"; printf "\nShiplog — comandos disponíveis:\n\n"} /^[a-zA-Z_-]+:.*##/ { printf "  \033[36mmake %-16s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -84,6 +85,20 @@ launcher: build ## Cria o atalho "Shiplog" (Windows via WSL, Linux ou macOS)
 
 launcher-remove: ## Remove o atalho
 	@scripts/install-launcher.sh --uninstall
+
+# --- MCP (spec 009) ---------------------------------------------------------------
+MCP_CMD := uv run --quiet --directory $(CURDIR) shiplog-mcp
+mcp-install: ## Registra o MCP do Shiplog no Claude Code (escopo do usuário: vale em todos os projetos)
+	@[ -d .venv ] || uv sync
+	@claude mcp remove shiplog --scope user >/dev/null 2>&1 || true
+	claude mcp add shiplog --scope user -e SHIPLOG_PORT=$(PORT) -- $(MCP_CMD)
+	@echo "Pronto. Abra o Claude Code em qualquer projeto e peça: \"faz um post sobre o que fizemos hoje\"."
+
+mcp-remove: ## Remove o MCP do Shiplog do Claude Code
+	claude mcp remove shiplog --scope user
+
+mcp-inspect: ## Abre o MCP Inspector apontando para o servidor MCP do Shiplog
+	npx -y @modelcontextprotocol/inspector -e SHIPLOG_PORT=$(PORT) $(MCP_CMD)
 
 clean: ## Remove artefatos de build e caches (não toca nos seus dados em ~/.shiplog)
 	rm -rf frontend/dist .pytest_cache

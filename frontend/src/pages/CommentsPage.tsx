@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, ImagePlus, MessageSquareText, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
+import { Check, CheckCheck, Copy, ExternalLink, ImagePlus, MessageSquareText, Plus, RefreshCw, Sparkles, Terminal, Trash2, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
-import type { Comentario } from "@/lib/types";
+import type { Comentario, PlataformaComentario } from "@/lib/types";
 import { cn, copiar } from "@/lib/utils";
 import { relativo } from "@/lib/format";
 import { fadeUp } from "@/lib/motion";
@@ -29,6 +29,22 @@ const OP_IDIOMA: Opcao[] = [
   { value: "pt", label: "Português" },
   { value: "en", label: "Inglês" },
 ];
+const PLATAFORMAS: { value: PlataformaComentario; label: string }[] = [
+  { value: "linkedin", label: "LinkedIn" },
+  { value: "medium", label: "Medium" },
+];
+const NOME_PLATAFORMA: Record<PlataformaComentario, string> = { linkedin: "LinkedIn", medium: "Medium" };
+
+function Selos({ c }: { c: Comentario }) {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-fg-muted">{NOME_PLATAFORMA[c.plataforma] ?? c.plataforma}</span>
+      {c.status === "usado" && <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-xs text-primary-soft-fg"><CheckCheck className="size-3" /> Usado</span>}
+      {c.fonte === "claude_code" && <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-xs text-fg-muted"><Terminal className="size-3" /> via Claude Code</span>}
+    </span>
+  );
+}
+
 const EXT_OK = ["png", "jpg", "jpeg", "gif", "webp"];
 const MAX_IMG = 6;
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -85,6 +101,7 @@ function NovoComentario() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [autor, setAutor] = useState("");
+  const [plataforma, setPlataforma] = useState<PlataformaComentario>("linkedin");
   const [texto, setTexto] = useState("");
   const [imagens, setImagens] = useState<Imagem[]>([]);
   const [params, setParams] = useState<Params>(PADRAO);
@@ -122,7 +139,7 @@ function NovoComentario() {
 
   const criar = useMutation({
     mutationFn: () =>
-      api.criarComentario({ autor, texto_post: texto, imagens: imagens.map((i) => ({ nome: i.nome, conteudo_base64: i.base64 })) }),
+      api.criarComentario({ autor, plataforma, texto_post: texto, imagens: imagens.map((i) => ({ nome: i.nome, conteudo_base64: i.base64 })) }),
     onSuccess: (c) => {
       qc.invalidateQueries({ queryKey: ["comments"] });
       navigate(`/comentarios/${c.id}`, { state: { gerar: params } });
@@ -139,10 +156,27 @@ function NovoComentario() {
         <p className="text-fg-muted">Cole o post de outra pessoa (texto e/ou prints) e receba 3 opções de comentário no seu estilo.</p>
       </div>
       <Card className="flex flex-col gap-4 p-5">
-        <Field label="Autor do post (opcional)" htmlFor="c-autor">
+        <div role="radiogroup" aria-label="Plataforma" className="inline-flex w-fit gap-1 rounded-md border border-border bg-surface-2 p-1">
+          {PLATAFORMAS.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              role="radio"
+              aria-checked={plataforma === o.value}
+              onClick={() => setPlataforma(o.value)}
+              className={cn(
+                "rounded px-3 py-1 text-sm transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                plataforma === o.value ? "bg-surface font-medium text-fg shadow-sm" : "text-fg-muted hover:text-fg",
+              )}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        <Field label={plataforma === "medium" ? "Autor do artigo (opcional)" : "Autor do post (opcional)"} htmlFor="c-autor">
           <Input id="c-autor" value={autor} onChange={(e) => setAutor(e.target.value)} placeholder="Ex.: Ana Souza" maxLength={200} />
         </Field>
-        <Field label="Texto do post" htmlFor="c-texto" hint="Copie no LinkedIn com “…ver mais” aberto para pegar o texto inteiro.">
+        <Field label={plataforma === "medium" ? "Texto do artigo" : "Texto do post"} htmlFor="c-texto" hint={plataforma === "medium" ? "Cole o artigo inteiro ou os trechos que quer comentar." : "Copie no LinkedIn com “…ver mais” aberto para pegar o texto inteiro."}>
           <Textarea
             id="c-texto"
             value={texto}
@@ -204,26 +238,34 @@ function NovoComentario() {
   );
 }
 
-function SugestaoCard({ texto, abordagem, i }: { texto: string; abordagem: string; i: number }) {
+function SugestaoCard({ texto, abordagem, i, usada, onUsar, usando }: {
+  texto: string; abordagem: string; i: number; usada: boolean; onUsar: () => void; usando: boolean;
+}) {
   const [copiado, setCopiado] = useState(false);
   return (
     <motion.div variants={fadeUp} initial="hidden" animate="show" transition={{ delay: i * 0.06 }}>
-      <Card className="flex flex-col gap-3 p-4">
+      <Card className={cn("flex flex-col gap-3 p-4", usada && "border-primary")}>
         <div className="flex items-center justify-between gap-2">
           <span className="rounded-full bg-surface-2 px-2.5 py-0.5 text-xs font-medium text-fg-muted">{abordagem}</span>
           <span className="text-xs tabular-nums text-fg-subtle">{texto.length} caracteres</span>
         </div>
         <p className="whitespace-pre-wrap leading-relaxed">{texto}</p>
-        <Button
-          size="sm"
-          variant={copiado ? "soft" : "outline"}
-          className="self-end"
-          onClick={async () => {
-            if (await copiar(texto)) { setCopiado(true); toast.success("Comentário copiado"); setTimeout(() => setCopiado(false), 2000); }
-          }}
-        >
-          {copiado ? <Check /> : <Copy />} {copiado ? "Copiado" : "Copiar"}
-        </Button>
+        <div className="flex items-center justify-end gap-2">
+          {usada ? (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-primary"><CheckCheck className="size-3.5" /> Você usou esta</span>
+          ) : (
+            <Button size="sm" variant="ghost" onClick={onUsar} loading={usando}><CheckCheck /> Usei esta</Button>
+          )}
+          <Button
+            size="sm"
+            variant={copiado ? "soft" : "outline"}
+            onClick={async () => {
+              if (await copiar(texto)) { setCopiado(true); toast.success("Comentário copiado"); setTimeout(() => setCopiado(false), 2000); }
+            }}
+          >
+            {copiado ? <Check /> : <Copy />} {copiado ? "Copiado" : "Copiar"}
+          </Button>
+        </div>
       </Card>
     </motion.div>
   );
@@ -254,6 +296,20 @@ function DetalheComentario({ id }: { id: number }) {
       toast.error(e.message, { description: e.erro?.acao_sugerida ?? undefined });
     },
   });
+  const atualizar = (novo: Comentario) => {
+    qc.setQueryData(["comment", id], novo);
+    qc.invalidateQueries({ queryKey: ["comments"] });
+  };
+  const usar = useMutation({
+    mutationFn: (indice: number) => api.marcarComentarioUsado(id, { indice }),
+    onSuccess: (novo) => { atualizar(novo); toast.success("Marcado como usado"); },
+    onError: (e: ApiError) => toast.error(e.message),
+  });
+  const voltar = useMutation({
+    mutationFn: () => api.voltarComentarioSugerido(id),
+    onSuccess: atualizar,
+    onError: (e: ApiError) => toast.error(e.message),
+  });
   const excluir = useMutation({
     mutationFn: () => api.excluirComentario(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["comments"] }); toast.success("Comentário excluído"); navigate("/comentarios"); },
@@ -279,8 +335,13 @@ function DetalheComentario({ id }: { id: number }) {
       <div className="flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">{d.autor ? `Post de ${d.autor}` : "Post"}</h1>
-            <p className="text-sm text-fg-muted">Adicionado {relativo(d.criado_em)}</p>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {d.plataforma === "medium" ? (d.autor ? `Artigo de ${d.autor}` : "Artigo") : d.autor ? `Post de ${d.autor}` : "Post"}
+            </h1>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-fg-muted">
+              <Selos c={d} /> <span>Adicionado {relativo(d.criado_em)}</span>
+              {d.link && <a href={d.link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-fg">Original <ExternalLink className="size-3" /></a>}
+            </div>
           </div>
           <Button variant="ghost" size="sm" onClick={() => excluir.mutate()} loading={excluir.isPending}><Trash2 /> Excluir</Button>
         </div>
@@ -315,7 +376,22 @@ function DetalheComentario({ id }: { id: number }) {
             {[0, 1, 2].map((i) => <Skeleton key={i} className="h-32" />)}
           </>
         ) : d.sugestoes.length ? (
-          d.sugestoes.map((s, i) => <SugestaoCard key={`${d.gerado_em}-${i}`} i={i} texto={s.texto} abordagem={s.abordagem} />)
+          <>
+            {d.status === "usado" && (
+              <Card className="flex flex-col gap-2 p-3 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1 font-medium"><CheckCheck className="size-4 text-primary" /> Comentário usado</span>
+                  <Button size="sm" variant="ghost" onClick={() => voltar.mutate()} loading={voltar.isPending}><Undo2 /> Desfazer</Button>
+                </div>
+                {d.texto_final && d.escolhido === null && <p className="whitespace-pre-wrap text-fg-muted">{d.texto_final}</p>}
+                {d.link_publicado && <a href={d.link_publicado} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg">Ver comentário publicado <ExternalLink className="size-3" /></a>}
+              </Card>
+            )}
+            {d.sugestoes.map((s, i) => (
+              <SugestaoCard key={`${d.gerado_em}-${i}`} i={i} texto={s.texto} abordagem={s.abordagem}
+                usada={d.status === "usado" && d.escolhido === i} usando={usar.isPending && usar.variables === i} onUsar={() => usar.mutate(i)} />
+            ))}
+          </>
         ) : (
           <div className="rounded-lg border border-dashed border-border py-14 text-center text-sm text-fg-muted">
             {d.erro ? <span className="text-st-erro">{d.erro}</span> : "Escolha o tipo de comentário e gere as sugestões."}
@@ -354,7 +430,10 @@ export default function CommentsPage() {
                 )}
               >
                 <span className="block truncate font-medium">{c.autor || c.texto_post.slice(0, 40) || "Post com imagens"}</span>
-                <span className="block text-xs text-fg-subtle">{relativo(c.criado_em)}{c.sugestoes.length ? "" : " · sem sugestões"}</span>
+                <span className="block text-xs text-fg-subtle">
+                  {NOME_PLATAFORMA[c.plataforma] ?? c.plataforma} · {relativo(c.criado_em)}
+                  {c.status === "usado" ? " · usado" : c.sugestoes.length ? "" : " · sem sugestões"}
+                </span>
               </Link>
             ))}
           </nav>

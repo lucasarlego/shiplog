@@ -1,4 +1,4 @@
-import type { ApiErro, Artigo, Comentario, Config, Debug, Health, Job, Projeto, Post, TipoGeracao } from "./types";
+import type { ApiErro, Artigo, Comentario, PlataformaComentario, Config, Debug, Health, Job, Projeto, Post, TipoGeracao } from "./types";
 
 export class ApiError extends Error {
   constructor(public erro: ApiErro, public status: number) {
@@ -85,10 +85,13 @@ export const api = {
 
   comentarios: () => req<Comentario[]>("GET", "/comments"),
   comentario: (id: number) => req<Comentario>("GET", `/comments/${id}`),
-  criarComentario: (body: { autor?: string; link?: string; texto_post: string; imagens: { nome: string; conteudo_base64: string }[] }) =>
+  criarComentario: (body: { autor?: string; link?: string; texto_post: string; plataforma?: PlataformaComentario; imagens: { nome: string; conteudo_base64: string }[] }) =>
     req<Comentario>("POST", "/comments", body),
   gerarComentario: (id: number, body: { parametros?: Record<string, string>; instrucoes?: string }) =>
     req<Comentario>("POST", `/comments/${id}/generate`, body),
+  marcarComentarioUsado: (id: number, body: { indice?: number; texto_final?: string; link?: string }) =>
+    req<Comentario>("POST", `/comments/${id}/usado`, body),
+  voltarComentarioSugerido: (id: number) => req<Comentario>("POST", `/comments/${id}/sugerido`),
   excluirComentario: (id: number) => req<void>("DELETE", `/comments/${id}`),
   imagemComentario: (id: number, nome: string) => `/api/comments/${id}/images/${encodeURIComponent(nome)}`,
   exportUrl: (formato: "md" | "json") => `/api/export?formato=${formato}`,

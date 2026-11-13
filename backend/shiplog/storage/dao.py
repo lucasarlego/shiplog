@@ -138,12 +138,24 @@ class Dao:
         )
 
     def ultimo_commit_gerado(self, projeto_id: int) -> str | None:
+        """Commit do post mais recente: o da geração (Shiplog) ou o de referência (Claude Code, spec 009)."""
+        r = self.db.conn.execute(
+            "SELECT COALESCE(p.commit_referencia, g.commit_hash) FROM posts p LEFT JOIN geracoes g ON g.id = p.geracao_id "
+            "WHERE p.projeto_id = ? AND COALESCE(p.commit_referencia, g.commit_hash) IS NOT NULL "
+            "ORDER BY p.versao DESC LIMIT 1",
+            (projeto_id,),
+        ).fetchone()
+        if r:
+            return r[0]
         r = self.db.conn.execute(
             "SELECT commit_hash FROM geracoes WHERE projeto_id = ? AND status = 'concluido' AND commit_hash IS NOT NULL "
             "ORDER BY id DESC LIMIT 1",
             (projeto_id,),
         ).fetchone()
         return r[0] if r else None
+
+    def projeto_local(self, caminho: str) -> dict[str, Any] | None:
+        return self._one("SELECT * FROM projetos WHERE origem = 'local' AND caminho_local = ?", (caminho,))
 
     def marcar_interrompidas(self) -> int:
         qs = ",".join("?" for _ in ATIVOS)

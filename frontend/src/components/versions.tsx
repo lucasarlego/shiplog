@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { Columns2, Pencil, Sparkles } from "lucide-react";
+import { Columns2, Pencil, Sparkles, Terminal } from "lucide-react";
 import type { Artigo, Post } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { dataHora } from "@/lib/format";
@@ -53,8 +53,8 @@ export function VersionList<T extends V>({
                 <StatusBadge status={v.status} className="ml-auto" />
               </div>
               <div className="flex items-center gap-1 text-xs text-fg-subtle">
-                {v.editado_manualmente ? <Pencil className="size-3" /> : <Sparkles className="size-3" />}
-                {v.editado_manualmente ? "Editado" : "Gerado"} · {dataHora(v.criado_em)}
+                {v.editado_manualmente ? <Pencil className="size-3" /> : v.fonte === "claude_code" ? <Terminal className="size-3" /> : <Sparkles className="size-3" />}
+                {v.editado_manualmente ? "Editado" : v.fonte === "claude_code" ? "via Claude Code" : "Gerado"} · {dataHora(v.criado_em)}
               </div>
               {v.instrucoes_extras && !v.editado_manualmente && (
                 <div className="line-clamp-1 text-xs italic text-fg-muted">“{v.instrucoes_extras}”</div>

@@ -65,6 +65,11 @@ class GenerationService:
         if tipo not in ("post", "artigo"):
             raise AppError("validacao", "Tipo inválido.", "Use 'post' ou 'artigo'.", 422)
         projeto = self.projects.obter(projeto_id)
+        if projeto["origem"] == "local":
+            # Spec 009 FR-05: rodar o Claude headless na pasta de trabalho do usuário não é seguro (R-05).
+            raise AppError("projeto_local_sem_geracao",
+                           "Este projeto vive só na sua máquina; o Shiplog não gera textos direto nele.",
+                           "Gere pelo Claude Code com o MCP do Shiplog (\"faz um post sobre este projeto\").", 409)
         if tipo == "artigo" and projeto["origem"] == "livre":
             raise AppError("artigo_requer_repositorio",
                            "Artigos do Medium precisam de um repositório: eles citam trechos reais de código.",

@@ -7,6 +7,7 @@ Aplicação web **local** que ajuda pessoas desenvolvedoras a escrever para o Li
 - **Artigo para o Medium:** com trechos reais do código, usando a skill `medium-article-writer` (incluída em [`skills/`](skills/)).
 - **Comentários:** cole o texto e os prints do post de outra pessoa e receba 3 opções de comentário.
 - **Perfil profissional:** envie seu currículo; o Claude monta um perfil que entra em todos os textos.
+- **MCP para o Claude Code:** peça "faz um post sobre o que fizemos hoje" na sua sessão de desenvolvimento e o rascunho cai no Shiplog ([guia](docs/guia/mcp.md)).
 
 - Roda 100% em `127.0.0.1`, sem deploy, sem login, sem API paga (usa a sua assinatura do Claude Code).
 - O Claude só pode **ler** o repositório (`Read`, `Grep`, `Glob`; Bash/Edit/Write bloqueados). Depois de cada geração o clone é conferido com `git status`.
@@ -30,6 +31,7 @@ Testado em Linux e no WSL (Windows). macOS e Windows sem WSL têm suporte no có
 
 - [Instalação e uso no dia a dia](docs/guia/instalacao.md): pré-requisitos, atalho de desktop e todos os comandos `make`.
 - [Como usar](docs/guia/uso.md): posts com e sem repositório, artigos, comentários, perfil profissional e onde ficam os dados.
+- [MCP: escrever pelo Claude Code](docs/guia/mcp.md): `make mcp-install`, pedidos que funcionam e ferramentas.
 - [Segurança e privacidade](docs/guia/seguranca.md)
 - [Arquitetura](docs/guia/arquitetura.md)
 - [Solução de problemas](docs/guia/solucao-de-problemas.md)

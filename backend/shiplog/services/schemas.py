@@ -51,7 +51,23 @@ class ArtigoResposta(BaseModel):
     sugestoes_de_imagens: list[str] = Field(default_factory=list, description="descrições de imagens/diagramas")
 
 
-MODELOS: dict[str, type[BaseModel]] = {"post": PostResposta, "artigo": ArtigoResposta}
+class PostExterno(BaseModel):
+    """Post escrito pelo modelo do harness (spec 009 FR-09): mesmas regras visíveis ao usuário, ganchos opcionais."""
+    texto: str = Field(min_length=50, max_length=3000)
+    hashtags: list[str] = Field(min_length=3, max_length=5)
+    hooks_alternativos: list[str] = Field(default_factory=list, max_length=3)
+    resumo_tecnico: str = ""
+    destaques: list[str] = Field(default_factory=list, max_length=8)
+
+    _hashtags = field_validator("hashtags")(PostResposta._hashtags.__func__)  # type: ignore[attr-defined]
+
+    @field_validator("hooks_alternativos")
+    @classmethod
+    def _hooks(cls, v: list[str]) -> list[str]:
+        return [h.strip() for h in v if h.strip()]
+
+
+MODELOS: dict[str, type[BaseModel]] = {"post": PostResposta, "artigo": ArtigoResposta, "post_externo": PostExterno}
 
 _LINHAS = re.compile(r"^\s*(\d+)\s*(?:[-–]\s*(\d+))?\s*$")
 

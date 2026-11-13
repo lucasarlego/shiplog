@@ -17,7 +17,8 @@ def listar(ctx: AppContext = Depends(get_ctx)) -> list[dict]:
 
 @router.post("/comments", status_code=201)
 def criar(body: ComentarioCriar, ctx: AppContext = Depends(get_ctx)) -> dict:
-    return ctx.comments.criar(body.texto_post, [i.model_dump() for i in body.imagens], body.autor, body.link)
+    return ctx.comments.criar(body.texto_post, [i.model_dump() for i in body.imagens], body.autor, body.link,
+                              body.plataforma)
 
 
 @router.get("/comments/{cid}")

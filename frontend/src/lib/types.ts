@@ -12,7 +12,8 @@ export interface ApiErro {
 
 export interface MiniVersao { id: number; versao: number; status: StatusVersao; criado_em: string }
 
-export type OrigemProjeto = "repo" | "livre";
+export type OrigemProjeto = "repo" | "livre" | "local";
+export type FonteVersao = "shiplog" | "manual" | "claude_code";
 
 export interface Projeto {
   id: number;
@@ -72,6 +73,8 @@ interface VersaoBase {
   instrucoes_extras: string;
   parametros: Record<string, unknown>;
   commit_hash: string | null;
+  fonte?: FonteVersao;
+  commit_referencia?: string | null;
   criado_em: string;
 }
 
@@ -137,8 +140,15 @@ export interface Debug {
 
 // Spec 008 — comentários em posts de outras pessoas.
 export interface SugestaoComentario { abordagem: string; texto: string }
+export type PlataformaComentario = "linkedin" | "medium";
 export interface Comentario {
   id: number;
+  plataforma: PlataformaComentario;
+  status: "sugerido" | "usado";
+  escolhido: number | null;
+  texto_final: string | null;
+  link_publicado: string | null;
+  fonte: FonteVersao;
   autor: string;
   link: string;
   texto_post: string;

@@ -15,7 +15,7 @@ def dao(tmp_path):
 
 def test_migrate_idempotente(tmp_path):
     db = Database(tmp_path / "t.db")
-    assert db.migrate() == [1, 2, 3, 4]
+    assert db.migrate() == [1, 2, 3, 4, 5]
     assert db.migrate() == []
 
 

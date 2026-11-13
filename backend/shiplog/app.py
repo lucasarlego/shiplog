@@ -14,7 +14,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from . import __version__
-from .api import comments, generations, health, projects, settings, versions
+from .api import comments, generations, health, mcp_support, projects, settings, versions
 from .config import Paths, resolve_data_dir, setup_logging
 from .context import AppContext, build_context
 from .errors import AppError
@@ -79,7 +79,7 @@ def create_app(ctx: AppContext | None = None, start_worker: bool = True) -> Fast
     def ping() -> dict:
         return {"app": "shiplog", "versao": __version__}
 
-    for r in (health.router, projects.router, generations.router, versions.router, settings.router, comments.router):
+    for r in (health.router, projects.router, generations.router, versions.router, settings.router, comments.router, mcp_support.router):
         app.include_router(r, prefix="/api")
 
     dist = frontend_dist()

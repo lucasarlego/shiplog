@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
-import { ArrowLeft, ExternalLink, FileText, GitBranch, GitCommitHorizontal, Megaphone, Pencil, PenLine, StickyNote, Trash2, Check } from "lucide-react";
+import { ArrowLeft, ExternalLink, FileText, Folder, Terminal, GitBranch, GitCommitHorizontal, Megaphone, Pencil, PenLine, StickyNote, Trash2, Check } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import type { Artigo, Job, Post, Projeto, TipoGeracao } from "@/lib/types";
@@ -81,7 +81,12 @@ function Header({ p }: { p: Projeto }) {
             </Button>
           </div>
         )}
-        {livre ? (
+        {p.origem === "local" ? (
+          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-fg-muted">
+            <span className="inline-flex items-center gap-1 truncate font-mono text-xs"><Folder className="size-3.5" /> {p.caminho_local}</span>
+            <span className="text-xs">{p.ultima_analise_em ? `Atualizado ${relativo(p.ultima_analise_em)}` : "Sem posts ainda"}</span>
+          </div>
+        ) : livre ? (
           <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-fg-muted">
             <span className="inline-flex items-center gap-1"><PenLine className="size-3.5" /> Sem repositório</span>
             <span className="text-xs">{p.ultima_analise_em ? `Gerado ${relativo(p.ultima_analise_em)}` : "Ainda não gerado"}</span>
@@ -117,7 +122,7 @@ function Header({ p }: { p: Projeto }) {
           </div>
         </form>
       </Dialog>
-      <Dialog open={delOpen} onOpenChange={setDelOpen} title={`Excluir ${p.nome}?`} description={livre ? "Os posts gerados a partir desta descrição serão apagados." : "O clone local será removido. Nada é apagado no repositório remoto."}>
+      <Dialog open={delOpen} onOpenChange={setDelOpen} title={`Excluir ${p.nome}?`} description={livre ? "Os posts gerados a partir desta descrição serão apagados." : p.origem === "local" ? "Só o registro no Shiplog é apagado. A pasta do projeto não é tocada." : "O clone local será removido. Nada é apagado no repositório remoto."}>
         <div className="flex flex-col gap-4">
           <label className="flex items-center justify-between gap-3 rounded-md border border-border p-3 text-sm">
             <span>
@@ -203,6 +208,19 @@ function DescriptionCard({ p }: { p: Projeto }) {
   );
 }
 
+function ClaudeCodeHint({ tipo }: { tipo: TipoGeracao }) {
+  const pedido = tipo === "post" ? "faz um post do LinkedIn sobre o que fizemos hoje" : "escreve um artigo do Medium sobre este projeto";
+  return (
+    <Card className="flex flex-col gap-2 p-4 text-sm">
+      <div className="flex items-center gap-2 font-medium"><Terminal className="size-4" /> Gerado pelo Claude Code</div>
+      <p className="text-fg-muted">
+        Este projeto é uma pasta local sem remoto. Os textos são escritos na sua sessão do Claude Code pelo MCP do Shiplog.
+      </p>
+      <p className="rounded-md bg-surface-2 px-2 py-1.5 font-mono text-xs text-fg-muted">“{pedido}”</p>
+    </Card>
+  );
+}
+
 function Workspace<T extends Post | Artigo>({
   projeto,
   tipo,
@@ -245,6 +263,9 @@ function Workspace<T extends Post | Artigo>({
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
       <aside className="flex flex-col gap-4">
+        {projeto.origem === "local" ? (
+          <ClaudeCodeHint tipo={tipo} />
+        ) : (
         <GenerationPanel
           projeto={projeto}
           tipo={tipo}
@@ -254,6 +275,7 @@ function Workspace<T extends Post | Artigo>({
           jobAtivo={!!jobAtivo}
           onStarted={() => { jobVisto.current = jobVisto.current ?? -1; }}
         />
+        )}
         {!!versoes?.length && (
           <VersionList versoes={versoes} selecionada={atual?.id ?? null} onSelect={(id) => { setSel(id); setRecem(null); }} onCompare={() => setComparar(true)} />
         )}
@@ -276,7 +298,9 @@ function Workspace<T extends Post | Artigo>({
               {tipo === "post" ? <Megaphone className="mb-3 size-8 text-fg-subtle" /> : <FileText className="mb-3 size-8 text-fg-subtle" />}
               <p className="font-medium">{tipo === "post" ? "Nenhum post ainda" : "Nenhum artigo ainda"}</p>
               <p className="mt-1 max-w-sm text-sm text-fg-muted">
-                {tipo === "post"
+                {projeto.origem === "local"
+                  ? "Peça no Claude Code, dentro desta pasta, e o texto aparece aqui como rascunho."
+                  : tipo === "post"
                   ? "Escolha os parâmetros ao lado e gere o primeiro rascunho."
                   : "Gere um artigo para o Medium com trechos reais do código, usando a skill medium-article-writer."}
               </p>

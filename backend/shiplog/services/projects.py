@@ -12,6 +12,7 @@ from ..errors import AppError, nao_encontrado
 from ..storage.dao import Dao
 from ..storage.db import now_iso
 from . import repo as git
+from . import workspace
 from .urls import UrlInfo, validar_url
 from .versions import VersionService
 
@@ -88,6 +89,49 @@ class ProjectService:
         log.info("Post livre %s cadastrado", pid)
         return self.detalhe(pid)
 
+    def projeto_atual(self, caminho: str, vincular: bool = False) -> dict[str, Any]:
+        """Projeto da pasta aberta no harness (spec 009 FR-04): pelo `origin`, ou `local` pelo caminho."""
+        pasta = workspace.resolver(caminho)
+        info: UrlInfo | None = None
+        if pasta.origin:
+            try:
+                info = validar_url(pasta.origin, permitir_file=self.permitir_file)
+            except AppError:
+                info = None  # remoto que o Shiplog não clona (ex.: caminho local): trata como projeto local
+        local = self.dao.projeto_local(pasta.caminho)
+        criado = vinculado = False
+        if info:
+            p = self.dao.projeto_por_url(info.normalizada)
+            if p is None and local is not None and vincular:
+                caminho_clone = self.repos_dir / f"{local['id']}-{slug(info.nome)}"
+                self.dao.atualizar_projeto(local["id"], origem="repo", url_repo=info.url, url_normalizada=info.normalizada,
+                                           caminho_local=str(caminho_clone))
+                p, vinculado = self.dao.projeto(local["id"]), True
+            elif p is None and local is None:
+                pid = self.dao.criar_projeto(nome=info.nome, url_repo=info.url, url_normalizada=info.normalizada,
+                                             caminho_local="", notas="")
+                self.dao.atualizar_projeto(pid, caminho_local=str(self.repos_dir / f"{pid}-{slug(info.nome)}"))
+                p, criado = self.dao.projeto(pid), True
+            elif p is None:
+                p = local  # já existe como local; o usuário decide se vincula
+        else:
+            p = local
+            if p is None:
+                pid = self.dao.criar_projeto(origem="local", nome=pasta.nome, caminho_local=pasta.caminho, notas="")
+                p, criado = self.dao.projeto(pid), True
+        assert p is not None
+        if p["arquivado"]:
+            self.dao.atualizar_projeto(p["id"], arquivado=False)
+        d = self.detalhe(p["id"])
+        d.update(
+            criado=criado,
+            vinculado=vinculado,
+            pode_vincular=bool(info and p["origem"] == "local"),
+            pasta={"caminho": pasta.caminho, "git": pasta.git, "origin": pasta.origin, "branch": pasta.branch,
+                   "head": pasta.head},
+        )
+        return d
+
     def obter(self, pid: int) -> dict[str, Any]:
         p = self.dao.projeto(pid)
         if not p:
@@ -157,6 +201,8 @@ class ProjectService:
             if len(descricao.strip()) < MIN_DESCRICAO:
                 raise AppError("validacao", f"A descrição precisa de pelo menos {MIN_DESCRICAO} caracteres.", None, 422)
             campos["descricao"] = descricao.strip()[:MAX_DESCRICAO]
+        if branch is not None and p["origem"] == "local":
+            raise AppError("validacao", "Projetos locais usam a branch atual da pasta.", None, 422)
         if branch is not None and livre:
             raise AppError("validacao", "Posts sem repositório não têm branch.", None, 422)
         if nome is not None:
@@ -180,7 +226,8 @@ class ProjectService:
         p = self.obter(pid)
         if self.dao.geracao_ativa_do_projeto(pid):
             raise AppError("validacao", "Há uma geração em andamento neste projeto.", "Cancele-a antes de excluir.", 409)
-        if p["caminho_local"]:
+        # Projeto `local` aponta para a pasta de trabalho do usuário: nunca é apagada (spec 009 FR-05).
+        if p["caminho_local"] and p["origem"] != "local":
             git.remover(Path(p["caminho_local"]), self.repos_dir)
         if manter_historico:
             # Libera a URL para recadastro mantendo o histórico (Q-07).

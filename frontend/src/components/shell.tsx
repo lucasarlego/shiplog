@@ -3,7 +3,7 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { Command } from "cmdk";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Copy, FolderGit2, LayoutGrid, Monitor, Moon, RefreshCw, Search, Settings, Sun, Terminal, ClipboardPaste, PenLine, MessageSquareText } from "lucide-react";
+import { AlertTriangle, Copy, Folder, FolderGit2, LayoutGrid, Monitor, Moon, RefreshCw, Search, Settings, Sun, Terminal, ClipboardPaste, PenLine, MessageSquareText } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useTheme, type Tema } from "@/lib/theme";
@@ -182,7 +182,7 @@ function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (
                   <Command.Group heading="Projetos" className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:text-fg-subtle">
                     {projetos.data.map((p) => (
                       <Command.Item key={p.id} value={`${p.id} ${p.nome} ${p.url_repo ?? p.descricao.slice(0, 80)}`} className={item} onSelect={() => run(() => navigate(`/projetos/${p.id}`))}>
-                        {p.origem === "livre" ? <PenLine /> : <FolderGit2 />} {p.nome}
+                        {p.origem === "livre" ? <PenLine /> : p.origem === "local" ? <Folder /> : <FolderGit2 />} {p.nome}
                         <span className="ml-auto truncate text-xs text-fg-subtle">{p.url_repo ?? "Sem repositório"}</span>
                       </Command.Item>
                     ))}

@@ -78,6 +78,7 @@ class ComentarioCriar(BaseModel):
     link: str = Field(default="", max_length=500)
     texto_post: str = Field(default="", max_length=10_000)
     imagens: list[ImagemIn] = Field(default_factory=list, max_length=6)
+    plataforma: Literal["linkedin", "medium"] = "linkedin"
 
 
 class ComentarioGerar(BaseModel):

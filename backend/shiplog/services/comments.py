@@ -41,6 +41,33 @@ OBJETIVOS = {
     "discordar": "discordar ou trazer um contraponto com respeito, argumentando de forma construtiva",
 }
 TAMANHOS = {"curto": "1 a 3 frases (até ~300 caracteres)", "medio": "3 a 5 frases (até ~700 caracteres)"}
+TAMANHOS_MEDIUM = {"curto": "2 a 4 frases (até ~400 caracteres)", "medio": "1 a 2 parágrafos (até ~1.200 caracteres)"}
+PLATAFORMAS = {"linkedin": "LinkedIn", "medium": "Medium"}
+STATUS = ("sugerido", "usado")
+
+
+def tamanho(plataforma: str, t: str) -> str:
+    return (TAMANHOS_MEDIUM if plataforma == "medium" else TAMANHOS)[t]
+
+
+def regras(plataforma: str, tem_perfil: bool) -> list[str]:
+    alvo = "artigo" if plataforma == "medium" else "post"
+    r = [
+        "Cada opção usa uma abordagem diferente, todas servindo ao objetivo pedido.",
+        f"Seja específico: cite um ponto concreto do {alvo}. Nada de \"Ótimo {alvo}!\", \"Parabéns pelo conteúdo\" "
+        "ou frases que serviriam para qualquer conteúdo.",
+        "Natural e humano, como alguém que realmente leu. Sem hashtags, sem links, sem autopromoção, "
+        "no máximo 1 emoji e só se combinar.",
+        f"Não invente fatos sobre o autor do {alvo}, sobre quem comenta ou sobre o assunto.",
+        f"Pode mencionar o autor do {alvo} pelo primeiro nome, se informado.",
+    ]
+    if plataforma == "medium":
+        r.append("No Medium o comentário (\"response\") pode citar uma frase curta do artigo entre aspas e "
+                 "aprofundar um ponto; evite resumir o artigo de volta para o autor.")
+    if not tem_perfil:
+        r.append("Não há perfil profissional configurado: não afirme experiências pessoais específicas "
+                 "(\"já passei por isso\", \"no meu time fazemos…\"); comente a partir do conteúdo.")
+    return r
 IDIOMAS = {"auto": "o mesmo idioma do post", "pt": "português do Brasil", "en": "inglês"}
 
 SCHEMA: dict[str, Any] = {
@@ -94,7 +121,10 @@ class CommentService:
         return self.pasta / str(cid)
 
     # -- CRUD ------------------------------------------------------------------
-    def criar(self, texto_post: str, imagens: list[dict[str, str]], autor: str = "", link: str = "") -> dict[str, Any]:
+    def criar(self, texto_post: str, imagens: list[dict[str, str]], autor: str = "", link: str = "",
+              plataforma: str = "linkedin") -> dict[str, Any]:
+        if plataforma not in PLATAFORMAS:
+            raise AppError("validacao", "Plataforma inválida.", "Use linkedin ou medium.", 422)
         texto_post = (texto_post or "").strip()
         if not texto_post and not imagens:
             raise AppError("validacao", "Cole o texto do post ou adicione pelo menos uma imagem.", None, 422)
@@ -104,7 +134,7 @@ class CommentService:
             raise AppError("validacao", f"No máximo {MAX_IMAGENS} imagens por post.", None, 422)
         arquivos = [_decodificar(i.get("nome", ""), i.get("conteudo_base64", "")) for i in imagens]  # valida tudo antes
         cid = self.dao.criar_comentario(autor=(autor or "").strip()[:200], link=(link or "").strip()[:500],
-                                        texto_post=texto_post)
+                                        texto_post=texto_post, plataforma=plataforma)
         nomes: list[str] = []
         if arquivos:
             d = self._dir(cid)
@@ -125,7 +155,8 @@ class CommentService:
     @staticmethod
     def apresentar(c: dict[str, Any]) -> dict[str, Any]:
         return {k: c[k] for k in ("id", "autor", "link", "texto_post", "imagens", "parametros", "instrucoes",
-                                  "resumo_post", "sugestoes", "erro", "criado_em", "gerado_em")}
+                                  "resumo_post", "sugestoes", "erro", "criado_em", "gerado_em", "plataforma", "status",
+                                  "escolhido", "texto_final", "link_publicado", "fonte")}
 
     def listar(self) -> list[dict[str, Any]]:
         return [self.apresentar(c) for c in self.dao.listar_comentarios()]
@@ -141,6 +172,35 @@ class CommentService:
         self.dao.excluir_comentario(cid)
         shutil.rmtree(self._dir(cid), ignore_errors=True)
 
+    def criar_externo(self, plataforma: str, texto_original: str, sugestoes: list[dict[str, Any]], resumo: str = "",
+                      autor: str = "", link: str = "", imagens: list[dict[str, str]] | None = None,
+                      parametros: dict[str, Any] | None = None, fonte: str = "claude_code") -> dict[str, Any]:
+        """Comentário escrito fora do Shiplog (Claude Code via MCP, spec 009 FR-14)."""
+        validas = _validar({"sugestoes": sugestoes})
+        if not validas:
+            raise AppError("validacao", "Envie pelo menos uma sugestão com `texto`.", None, 422)
+        params = self.normalizar(parametros)
+        c = self.criar(texto_original, imagens or [], autor, link, plataforma)
+        self.dao.atualizar_comentario(c["id"], sugestoes=validas[:5], resumo_post=(resumo or "").strip(), parametros=params,
+                                      fonte=fonte, gerado_em=now_iso())
+        return self.obter(c["id"])
+
+    def marcar_usado(self, cid: int, indice: int | None = None, texto_final: str | None = None,
+                     link: str | None = None) -> dict[str, Any]:
+        c = self.obter(cid)
+        if texto_final is None:
+            if indice is None or not (0 <= indice < len(c["sugestoes"])):
+                raise AppError("validacao", "Informe o índice da sugestão usada (0, 1 ou 2) ou o texto final.", None, 422)
+            texto_final = c["sugestoes"][indice]["texto"]
+        self.dao.atualizar_comentario(cid, status="usado", escolhido=indice, texto_final=texto_final.strip(),
+                                      link_publicado=(link or "").strip() or None)
+        return self.obter(cid)
+
+    def voltar_sugerido(self, cid: int) -> dict[str, Any]:
+        self.obter(cid)
+        self.dao.atualizar_comentario(cid, status="sugerido", escolhido=None, texto_final=None, link_publicado=None)
+        return self.obter(cid)
+
     # -- geração -----------------------------------------------------------------
     def normalizar(self, parametros: dict[str, Any] | None) -> dict[str, str]:
         p = {**PADRAO, **{k: v for k, v in (parametros or {}).items() if v is not None}}
@@ -153,23 +213,20 @@ class CommentService:
     def montar_prompt(self, c: dict[str, Any], params: dict[str, str], instrucoes: str, cfg: dict[str, Any]) -> str:
         partes = [
             "# Tarefa",
-            "Você ajuda uma pessoa desenvolvedora a comentar no post de OUTRA pessoa no LinkedIn. "
+            f"Você ajuda uma pessoa desenvolvedora a comentar {'no artigo' if c['plataforma'] == 'medium' else 'no post'} "
+            f"de OUTRA pessoa no {PLATAFORMAS[c['plataforma']]}. "
             "Escreva 3 opções de comentário, em primeira pessoa, como se fosse ela comentando.",
         ]
         if cfg.get("perfil_profissional", "").strip():
             partes += ["## Quem vai comentar (perfil profissional)",
                        "Use para dar perspectiva e propriedade ao comentário. Só cite experiências que estejam no perfil.",
                        cfg["perfil_profissional"].strip()]
-        else:
-            partes += ["## Quem vai comentar",
-                       "Não há perfil profissional configurado: não afirme experiências pessoais específicas "
-                       "(\"já passei por isso\", \"no meu time fazemos…\"); comente a partir do conteúdo do post."]
         if cfg.get("perfil_voz", "").strip():
             partes += ["## Como essa pessoa escreve", cfg["perfil_voz"].strip()]
         partes += [
             "## Parâmetros",
             f"- Objetivo: {OBJETIVOS[params['objetivo']]}",
-            f"- Tamanho de cada comentário: {TAMANHOS[params['tamanho']]}",
+            f"- Tamanho de cada comentário: {tamanho(c['plataforma'], params['tamanho'])}",
             f"- Idioma: {IDIOMAS[params['idioma']]}",
             "## O post",
             f"Autor do post: {c['autor']}" if c["autor"] else "Autor do post: (não informado)",
@@ -185,15 +242,8 @@ class CommentService:
             partes += ["## Sugestões anteriores (escreva opções diferentes destas)", anteriores]
         if instrucoes.strip():
             partes += ["## Instruções extras de quem vai comentar (prioridade máxima)", instrucoes.strip()]
+        partes += ["## Regras", *(f"- {r}" for r in regras(c["plataforma"], bool(cfg.get("perfil_profissional", "").strip())))]
         partes += [
-            "## Regras",
-            "- Cada opção usa uma abordagem diferente, todas servindo ao objetivo pedido.",
-            "- Seja específico: cite um ponto concreto do post ou das imagens. Nada de \"Ótimo post!\", "
-            "\"Parabéns pelo conteúdo\" ou frases que serviriam para qualquer post.",
-            "- Natural e humano, como alguém que realmente leu. Sem hashtags, sem links, sem autopromoção, "
-            "no máximo 1 emoji e só se combinar.",
-            "- Não invente fatos sobre o autor do post, sobre quem comenta ou sobre o assunto.",
-            "- Pode mencionar o autor pelo primeiro nome, se informado.",
             "## Formato da resposta",
             "Responda apenas com o JSON: {\"resumo_post\": \"...\", \"sugestoes\": "
             "[{\"abordagem\": \"...\", \"texto\": \"...\"}, ... 3 itens]}",

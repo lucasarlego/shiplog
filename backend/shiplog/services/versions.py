@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 from typing import Any, Literal
 
 from ..errors import AppError, nao_encontrado
 from ..storage.dao import Dao
 from ..storage.db import now_iso
+from . import schemas
 
 Tipo = Literal["post", "artigo"]
 TABELA = {"post": "posts", "artigo": "artigos"}
@@ -57,6 +59,27 @@ class VersionService:
         fields = {k: conteudo[k] for k in EDITAVEIS[tipo] if k in conteudo}
         fields.update(projeto_id=projeto_id, geracao_id=geracao_id, rodada=rodada,
                       origem_id=origem_id, status="rascunho", editado_manualmente=False)
+        return self.dao.inserir_versao(TABELA[tipo], fields)
+
+    def criar_externa(self, tipo: Tipo, projeto_id: int, dados: dict[str, Any], raiz: Path | None,
+                      fonte: str = "claude_code", commit_referencia: str | None = None,
+                      base_versao_id: int | None = None) -> int:
+        """Versão escrita fora do Shiplog, pelo modelo do harness via MCP (spec 009 FR-09, FR-11)."""
+        if tipo == "artigo" and raiz is None:
+            raise AppError("validacao", "Para conferir os trechos de código, informe `caminho` com a pasta do projeto.",
+                           None, 422)
+        validos, erros = schemas.validar("post_externo" if tipo == "post" else "artigo", dados, raiz)
+        if validos is None:
+            raise AppError("validacao", "O conteúdo não passou na validação: " + "; ".join(erros[:8]),
+                           "Corrija os itens e chame de novo.", 422, {"erros": erros})
+        if base_versao_id is not None:
+            base = self.dao.versao(TABELA[tipo], base_versao_id)
+            if not base or base["projeto_id"] != projeto_id:
+                raise nao_encontrado("Versão base")
+        fields = {k: validos[k] for k in EDITAVEIS[tipo] if k in validos}
+        fields.update(projeto_id=projeto_id, geracao_id=None, rodada=self.dao.rodada_atual(TABELA[tipo], projeto_id),
+                      origem_id=base_versao_id, status="rascunho", editado_manualmente=False, fonte=fonte,
+                      commit_referencia=commit_referencia)
         return self.dao.inserir_versao(TABELA[tipo], fields)
 
     def editar(self, tipo: Tipo, origem_id: int, mudancas: dict[str, Any]) -> int:
