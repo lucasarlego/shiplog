@@ -12,7 +12,7 @@ import { dur, ease } from "@/lib/motion";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/input";
 import { Card, Tooltip } from "./ui/misc";
-import { PublishDialog } from "./versions";
+import { ParametrosVersao, PublishDialog } from "./versions";
 
 /** Contador de caracteres com limite do LinkedIn (RF-19). */
 export function CharCounter({ total, inicio, linhaCorte }: { total: number; inicio: number; linhaCorte: number }) {
@@ -284,6 +284,7 @@ export function PostEditor({ post, novo }: { post: Post; novo: boolean }) {
             </>
           )}
         </Card>
+        <ParametrosVersao versao={post} />
       </div>
 
       <PublishDialog

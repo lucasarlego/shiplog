@@ -13,7 +13,7 @@ import { dur, ease } from "@/lib/motion";
 import { Button } from "./ui/button";
 import { Input, Textarea } from "./ui/input";
 import { Card, Field } from "./ui/misc";
-import { PublishDialog } from "./versions";
+import { ParametrosVersao, PublishDialog } from "./versions";
 
 export function MarkdownPreview({ markdown, revelar }: { markdown: string; revelar?: boolean }) {
   const reduce = useReducedMotion();
@@ -186,6 +186,7 @@ export function ArticleEditor({ artigo, novo }: { artigo: Artigo; novo: boolean 
             </ul>
           </Card>
         )}
+        <ParametrosVersao versao={artigo} />
       </div>
 
       <PublishDialog

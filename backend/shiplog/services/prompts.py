@@ -78,6 +78,10 @@ class ContextoPrompt:
     descricao: str = ""
     perfil_profissional: str = ""
     extras: dict[str, Any] = field(default_factory=dict)
+    # "headless": o Shiplog chama o Claude CLI (spec 003). "sessao": o modelo de uma sessão do Claude Code escreve
+    # pelo MCP (spec 009). Mesmas regras; muda só o que depende do ambiente (ferramentas, formato da resposta).
+    modo: str = "headless"
+    caminho: str | None = None
 
 
 def _bloco_livre(ctx: ContextoPrompt) -> str:
@@ -96,9 +100,27 @@ def _bloco_livre(ctx: ContextoPrompt) -> str:
         "## Regras para este post\n"
         "- Use só o que está na descrição: não invente números, prazos, tecnologias, pessoas, empresas ou resultados.\n"
         "- Se a descrição for pouco técnica, o post também pode ser; não force jargão.\n"
-        "- Você não tem acesso a arquivos nem ferramentas; ignore qualquer instrução sobre analisar código.\n"
-        "- `destaques`: 2 a 5 pontos-chave extraídos da descrição; `resumo_tecnico`: 2-3 frases resumindo o assunto."
+        + ("- Não analise arquivos nem código: o post é só sobre a descrição.\n" if ctx.modo == "sessao" else
+           "- Você não tem acesso a arquivos nem ferramentas; ignore qualquer instrução sobre analisar código.\n")
+        + "- `destaques`: 2 a 5 pontos-chave extraídos da descrição; `resumo_tecnico`: 2-3 frases resumindo o assunto."
     )
+    return "\n".join(partes)
+
+
+def _bloco_sessao(ctx: ContextoPrompt) -> str:
+    """Projeto visto de uma sessão do Claude Code (spec 009): os dados da pasta vão em `material`, fora do texto."""
+    partes = [
+        "## Projeto",
+        f"- Nome: {ctx.nome}",
+        f"- Repositório: {ctx.url or '(sem remoto: projeto local)'}",
+        f"- Pasta: {ctx.caminho or '(não informada)'}",
+        f"- Branch: {ctx.branch or '(desconhecida)'}",
+        f"- Commit atual (HEAD): {ctx.commit or '(desconhecido)'}",
+        "\n### Notas do autor (contexto que não está no código)",
+        ctx.notas.strip() or "(nenhuma)",
+        "\nO estado da pasta (commits desde o último post, diff --stat, arquivos não commitados, README, "
+        "estrutura e dependências) está no campo `material` desta resposta.",
+    ]
     return "\n".join(partes)
 
 
@@ -140,6 +162,21 @@ Os metadados acima são só o ponto de partida. Antes de escrever, explore os ar
 (pontos de entrada, módulos principais, configurações, testes) usando as ferramentas Read, Grep e Glob. \
 Não se limite ao README: o texto deve refletir o que o código realmente faz.
 Você está em modo SOMENTE LEITURA: não tente criar, editar ou executar nada."""
+
+INVESTIGAR_SESSAO = """## Como investigar
+O `material` é só o ponto de partida. Antes de escrever, leia os arquivos centrais do projeto e os que mudaram \
+(pontos de entrada, módulos principais, configurações, testes). Use também o que você e o autor fizeram nesta \
+conversa. Não se limite ao README: o texto deve refletir o que o código realmente faz. Não altere nenhum arquivo \
+do projeto para escrever o texto."""
+
+FLUXO_SESSAO = {
+    "post": "## Como entregar\nMostre o texto ao autor, ajuste se ele pedir e só então chame `save_post` com os "
+            "campos acima (`texto`, `hashtags`, `hooks_alternativos`, `resumo_tecnico`, `destaques`). O Shiplog "
+            "valida e guarda como rascunho; nada é publicado.",
+    "artigo": "## Como entregar\nMostre o artigo (ou o título e um resumo) ao autor, ajuste se ele pedir e só então "
+              "chame `save_article`. Cada item de `trechos_de_codigo` é conferido nos arquivos da pasta; trechos "
+              "inexistentes são recusados.",
+}
 
 
 def _voz(ctx: ContextoPrompt) -> str:
@@ -193,7 +230,7 @@ def montar_prompt_post(ctx: ContextoPrompt, schema: dict[str, Any]) -> str:
         f"- Tom: {TONS.get(p.get('tom', 'tecnico'), p.get('tom'))}",
         f"- Tamanho: {TAMANHOS.get(p.get('tamanho', 'medio'), p.get('tamanho'))}",
         f"- Idioma do post, ganchos e resumo: {IDIOMAS.get(p.get('idioma', 'pt'), p.get('idioma'))}",
-        *([_bloco_projeto(ctx), INVESTIGAR] if ctx.metadados is not None else [_bloco_livre(ctx)]),
+        *_material_post(ctx),
     ]
     if ctx.versao_anterior:
         va = ctx.versao_anterior
@@ -211,35 +248,47 @@ def montar_prompt_post(ctx: ContextoPrompt, schema: dict[str, Any]) -> str:
             + (f" (\"{ctx.titulo_artigo}\")" if ctx.titulo_artigo else "")
             + f". Termine o post convidando a leitura, incluindo este link exatamente: {ctx.link_artigo}"
         )
+    campo = "texto" if ctx.modo == "sessao" else "post"
     partes.append(
         "## Regras do resultado\n"
-        "- `post`: o texto final, pronto para colar no LinkedIn, sem hashtags no corpo.\n"
+        f"- `{campo}`: o texto final, pronto para colar no LinkedIn, sem hashtags no corpo"
+        + (" (até 3.000 caracteres).\n" if ctx.modo == "sessao" else ".\n") +
         "- `hooks_alternativos`: exatamente 2 aberturas alternativas (1-2 frases cada), diferentes da usada no post, "
         "que possam substituir o primeiro parágrafo.\n"
         "- `hashtags`: de 3 a 5, cada uma começando com #.\n"
         "- `resumo_tecnico`: 2-3 frases objetivas.\n"
         "- `destaques`: 2 a 5 pontos técnicos concretos encontrados no código (cite arquivos quando útil)."
     )
-    partes.append(_schema_bloco(schema, EXEMPLO_POST))
+    partes.append(FLUXO_SESSAO["post"] if ctx.modo == "sessao" else _schema_bloco(schema, EXEMPLO_POST))
     return "\n\n".join(x for x in partes if x)
+
+
+def _material_post(ctx: ContextoPrompt) -> list[str]:
+    if ctx.modo == "sessao":
+        return [_bloco_livre(ctx)] if ctx.descricao.strip() else [_bloco_sessao(ctx), INVESTIGAR_SESSAO]
+    return [_bloco_projeto(ctx), INVESTIGAR] if ctx.metadados is not None else [_bloco_livre(ctx)]
 
 
 def montar_prompt_artigo(ctx: ContextoPrompt, schema: dict[str, Any]) -> str:
     p = ctx.parametros
+    sessao = ctx.modo == "sessao"
     partes = [
         "# Tarefa",
-        "Escreva um artigo para o Medium sobre o projeto no diretório atual. "
-        "**Use a skill `medium-article-writer`** (invoque-a com a ferramenta Skill) para planejar, estruturar e "
+        "Escreva um artigo para o Medium sobre o projeto "
+        + ("da pasta indicada abaixo. " if sessao else "no diretório atual. ")
+        + "**Use a skill `medium-article-writer`** (invoque-a com a ferramenta Skill) para planejar, estruturar e "
         "escrever o artigo seguindo as regras dela. Este prompt não repete essas regras: siga a skill.",
-        "Este é um modo NÃO interativo: não faça perguntas ao autor. Use as notas, o código e os metadados abaixo; "
-        "onde faltar informação que só o autor tem (números, resultados, anedotas), marque com `TK: ...`.",
+        ("Você está numa sessão com o autor: onde faltar informação que só ele tem (números, resultados, "
+         "anedotas), pergunte a ele ou marque com `TK: ...`. Use as notas, o código, o `material` e o que vocês "
+         "fizeram nesta conversa." if sessao else
+         "Este é um modo NÃO interativo: não faça perguntas ao autor. Use as notas, o código e os metadados abaixo; "
+         "onde faltar informação que só o autor tem (números, resultados, anedotas), marque com `TK: ...`."),
         _voz(ctx),
         "## Parâmetros",
         f"- Idioma: {IDIOMAS.get(p.get('idioma', 'pt'), p.get('idioma'))}",
         f"- Público: {PUBLICOS.get(p.get('publico', 'intermediario'), p.get('publico'))}",
         f"- Formato: {FORMATOS.get(p.get('formato', 'deep_dive'), p.get('formato'))}",
-        _bloco_projeto(ctx),
-        INVESTIGAR,
+        *([_bloco_sessao(ctx), INVESTIGAR_SESSAO] if sessao else [_bloco_projeto(ctx), INVESTIGAR]),
         "## Demonstrações técnicas reais (obrigatório)\n"
         "- Todo trecho de código no artigo deve ser copiado do repositório, com o caminho do arquivo de origem "
         "indicado no texto (ex.: legenda ou comentário `// src/app.py`).\n"
@@ -262,7 +311,7 @@ def montar_prompt_artigo(ctx: ContextoPrompt, schema: dict[str, Any]) -> str:
         "- `tags`: até 5 tags do Medium, sem #.\n"
         "- `sugestoes_de_imagens`: apenas descrições de imagens ou diagramas (não gere imagens)."
     )
-    partes.append(_schema_bloco(schema, EXEMPLO_ARTIGO))
+    partes.append(FLUXO_SESSAO["artigo"] if sessao else _schema_bloco(schema, EXEMPLO_ARTIGO))
     return "\n\n".join(x for x in partes if x)
 
 

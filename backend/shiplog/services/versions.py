@@ -19,6 +19,27 @@ EDITAVEIS = {
     "artigo": ("titulo", "subtitulo", "corpo_markdown", "tags", "trechos_de_codigo", "sugestoes_de_imagens"),
 }
 STATUS = ("rascunho", "pronto", "publicado")
+PARAMETROS = {
+    "post": {"tom": ("tecnico", "storytelling", "conquista", "aprendizado"), "tamanho": ("curto", "medio", "longo"),
+             "idioma": ("pt", "en")},
+    "artigo": {"idioma": ("pt", "en"), "publico": ("iniciante", "intermediario", "avancado"),
+               "formato": ("tutorial", "deep_dive", "case_arquitetura")},
+}
+
+
+def _parametros(tipo: Tipo, p: dict[str, Any] | None) -> dict[str, Any]:
+    """Guarda só os parâmetros informados (nunca preenche padrões que o autor não escolheu) e recusa valores inválidos."""
+    out: dict[str, Any] = {}
+    for k, validos in PARAMETROS[tipo].items():
+        v = (p or {}).get(k)
+        if v is None:
+            continue
+        if v not in validos:
+            raise AppError("validacao", f"Parâmetro '{k}' inválido: {v!r}.", f"Valores aceitos: {', '.join(validos)}.", 422)
+        out[k] = v
+    if tipo == "post" and (p or {}).get("incluir_link_artigo") is not None:
+        out["incluir_link_artigo"] = bool(p["incluir_link_artigo"])  # type: ignore[index]
+    return out
 
 
 class VersionService:
@@ -32,8 +53,9 @@ class VersionService:
         out = dict(v)
         out["link"] = out.pop(LINK[tipo], None)
         g = self.dao.geracao(v["geracao_id"]) if v.get("geracao_id") else None
-        out["parametros"] = g["parametros"] if g else {}
-        out["instrucoes_extras"] = g["instrucoes_extras"] if g else ""
+        # A versão guarda os próprios parâmetros (0006); a geração de origem é só o fallback.
+        out["parametros"] = v.get("parametros") or (g["parametros"] if g else {})
+        out["instrucoes_extras"] = v.get("instrucoes_extras") or (g["instrucoes_extras"] if g else "")
         out["commit_hash"] = g["commit_hash"] if g else None
         return out
 
@@ -57,13 +79,16 @@ class VersionService:
         if tipo == "post" and "post" in conteudo and "texto" not in conteudo:
             conteudo = {**conteudo, "texto": conteudo["post"]}
         fields = {k: conteudo[k] for k in EDITAVEIS[tipo] if k in conteudo}
+        g = self.dao.geracao(geracao_id)
         fields.update(projeto_id=projeto_id, geracao_id=geracao_id, rodada=rodada,
-                      origem_id=origem_id, status="rascunho", editado_manualmente=False)
+                      origem_id=origem_id, status="rascunho", editado_manualmente=False,
+                      parametros=(g or {}).get("parametros") or {}, instrucoes_extras=(g or {}).get("instrucoes_extras") or "")
         return self.dao.inserir_versao(TABELA[tipo], fields)
 
     def criar_externa(self, tipo: Tipo, projeto_id: int, dados: dict[str, Any], raiz: Path | None,
                       fonte: str = "claude_code", commit_referencia: str | None = None,
-                      base_versao_id: int | None = None) -> int:
+                      base_versao_id: int | None = None, parametros: dict[str, Any] | None = None,
+                      instrucoes_extras: str = "") -> int:
         """Versão escrita fora do Shiplog, pelo modelo do harness via MCP (spec 009 FR-09, FR-11)."""
         if tipo == "artigo" and raiz is None:
             raise AppError("validacao", "Para conferir os trechos de código, informe `caminho` com a pasta do projeto.",
@@ -79,7 +104,8 @@ class VersionService:
         fields = {k: validos[k] for k in EDITAVEIS[tipo] if k in validos}
         fields.update(projeto_id=projeto_id, geracao_id=None, rodada=self.dao.rodada_atual(TABELA[tipo], projeto_id),
                       origem_id=base_versao_id, status="rascunho", editado_manualmente=False, fonte=fonte,
-                      commit_referencia=commit_referencia)
+                      commit_referencia=commit_referencia, parametros=_parametros(tipo, parametros),
+                      instrucoes_extras=(instrucoes_extras or "").strip())
         return self.dao.inserir_versao(TABELA[tipo], fields)
 
     def editar(self, tipo: Tipo, origem_id: int, mudancas: dict[str, Any]) -> int:
@@ -88,7 +114,9 @@ class VersionService:
         fields = {k: origem[k] for k in EDITAVEIS[tipo]}
         fields.update({k: v for k, v in mudancas.items() if k in EDITAVEIS[tipo] and v is not None})
         fields.update(projeto_id=origem["projeto_id"], geracao_id=origem["geracao_id"], rodada=origem["rodada"],
-                      origem_id=origem["id"], status="rascunho", editado_manualmente=True)
+                      origem_id=origem["id"], status="rascunho", editado_manualmente=True,
+                      parametros=origem.get("parametros") or {},
+                      instrucoes_extras=origem.get("instrucoes_extras") or "")
         return self.dao.inserir_versao(TABELA[tipo], fields)
 
     def alterar_status(self, tipo: Tipo, id_: int, status: str, link: str | None = None) -> None:

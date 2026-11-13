@@ -30,12 +30,18 @@ class ContextoPostIn(BaseModel):
     descricao: str | None = Field(default=None, max_length=8000)
     parametros: dict[str, Any] | None = None
     desde_commit: str | None = None
+    confirmacao: Literal["formulario", "recusada"] | None = None
+    instrucoes_extras: str = Field(default="", max_length=4000)
+    base_versao_id: int | None = None
 
 
 class ContextoArtigoIn(BaseModel):
     projeto_id: int | None = None
     caminho: str | None = None
     parametros: dict[str, Any] | None = None
+    confirmacao: Literal["formulario", "recusada"] | None = None
+    instrucoes_extras: str = Field(default="", max_length=4000)
+    base_versao_id: int | None = None
 
 
 class ContextoComentarioIn(BaseModel):
@@ -55,6 +61,8 @@ class PostExternoIn(BaseModel):
     destaques: list[str] = Field(default_factory=list)
     base_versao_id: int | None = None
     commit_referencia: str | None = None
+    parametros: dict[str, Any] | None = None
+    instrucoes_extras: str = Field(default="", max_length=4000)
 
 
 class TrechoIn(BaseModel):
@@ -72,6 +80,8 @@ class ArtigoExternoIn(BaseModel):
     trechos_de_codigo: list[TrechoIn]
     sugestoes_de_imagens: list[str] = Field(default_factory=list)
     base_versao_id: int | None = None
+    parametros: dict[str, Any] | None = None
+    instrucoes_extras: str = Field(default="", max_length=4000)
 
 
 class SugestaoIn(BaseModel):
@@ -109,12 +119,14 @@ def resolver(body: ResolverIn, ctx: AppContext = Depends(get_ctx)) -> dict:
 
 @router.post("/context/post")
 def contexto_post(body: ContextoPostIn, ctx: AppContext = Depends(get_ctx)) -> dict:
-    return ctx.contexto.post(body.projeto_id, body.caminho, body.descricao, body.parametros, body.desde_commit)
+    return ctx.contexto.post(body.projeto_id, body.caminho, body.descricao, body.parametros, body.desde_commit,
+                             body.confirmacao, body.instrucoes_extras, body.base_versao_id)
 
 
 @router.post("/context/artigo")
 def contexto_artigo(body: ContextoArtigoIn, ctx: AppContext = Depends(get_ctx)) -> dict:
-    return ctx.contexto.artigo(body.projeto_id, body.caminho, body.parametros)
+    return ctx.contexto.artigo(body.projeto_id, body.caminho, body.parametros, body.confirmacao,
+                               body.instrucoes_extras, body.base_versao_id)
 
 
 @router.post("/context/comentario")
@@ -145,7 +157,8 @@ def salvar_post(body: PostExternoIn, ctx: AppContext = Depends(get_ctx)) -> dict
         p, _raiz, head = _projeto_e_raiz(ctx, body.projeto_id, body.caminho)
     dados = body.model_dump(include={"texto", "hashtags", "hooks_alternativos", "resumo_tecnico", "destaques"})
     vid = ctx.versions.criar_externa("post", p["id"], dados, None, commit_referencia=body.commit_referencia or head,
-                                     base_versao_id=body.base_versao_id)
+                                     base_versao_id=body.base_versao_id, parametros=body.parametros,
+                                     instrucoes_extras=body.instrucoes_extras)
     ctx.dao.atualizar_projeto(p["id"], ultima_analise_em=now_iso())
     v = ctx.versions.apresentar("post", ctx.dao.versao("posts", vid))
     return _com_link(ctx, p["id"], {"versao": v})
@@ -156,9 +169,10 @@ def salvar_artigo(body: ArtigoExternoIn, ctx: AppContext = Depends(get_ctx)) -> 
     p, raiz, head = _projeto_e_raiz(ctx, body.projeto_id, body.caminho)
     if p["origem"] == "livre":
         raise AppError("artigo_requer_repositorio", "Artigos precisam de um projeto com código.", None, 409)
-    dados = body.model_dump(exclude={"projeto_id", "caminho", "base_versao_id"})
+    dados = body.model_dump(exclude={"projeto_id", "caminho", "base_versao_id", "parametros", "instrucoes_extras"})
     vid = ctx.versions.criar_externa("artigo", p["id"], dados, raiz, commit_referencia=head,
-                                     base_versao_id=body.base_versao_id)
+                                     base_versao_id=body.base_versao_id, parametros=body.parametros,
+                                     instrucoes_extras=body.instrucoes_extras)
     v = ctx.versions.apresentar("artigo", ctx.dao.versao("artigos", vid))
     return _com_link(ctx, p["id"], {"versao": v})
 

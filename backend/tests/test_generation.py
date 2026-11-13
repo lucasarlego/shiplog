@@ -92,7 +92,8 @@ def test_artigo(ctx, remote_repo, fake_cli):
     assert g["status"] == "concluido", g
     call = fake_cli.calls()[0]
     assert "Skill" in call["argv"][call["argv"].index("--tools") + 1] and "medium-article-writer" in call["stdin"]
-    assert ctx.dao.versao("artigos", g["resultado_id"])["titulo"] == "Como fiz"
+    v = ctx.dao.versao("artigos", g["resultado_id"])
+    assert v["titulo"] == "Como fiz" and v["parametros"]["formato"] == "tutorial"  # a versão guarda os parâmetros
 
 
 def test_limite_de_uso_e_retry(ctx, remote_repo, fake_cli):

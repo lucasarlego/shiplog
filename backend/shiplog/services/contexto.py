@@ -1,7 +1,9 @@
 """Pacotes de contexto para o modelo do harness escrever (spec 009 FR-06..FR-13).
 
 O Shiplog não chama nenhum modelo aqui: devolve o que só ele sabe (perfil, voz, parâmetros, histórico,
-estado do projeto) e as regras/formato que `salvar_*` vai validar.
+estado do projeto) e o formato que `save_*` vai validar. O texto de instruções é montado pelas mesmas funções da
+geração pela interface (`prompts.montar_prompt_post`/`montar_prompt_artigo`, modo "sessao"), para que as
+Configurações (prompt base, perfil, voz) e as regras valham igual nos dois caminhos.
 """
 
 from __future__ import annotations
@@ -13,30 +15,15 @@ from ..storage.dao import Dao
 from . import comments as com
 from . import workspace
 from .projects import MIN_DESCRICAO, ProjectService
-from .prompts import FORMATOS, IDIOMAS, PUBLICOS, PROMPT_BASE_PADRAO, TAMANHOS, TONS
+from . import prompts
+from .prompts import FORMATOS, IDIOMAS, PUBLICOS, TAMANHOS, TONS
 
 LIMITE_POST = 3000
 
-REGRAS_POST = [
-    "Primeira pessoa, como o autor contando o que fez; o texto final pronto para colar no LinkedIn.",
-    "Abra com uma frase forte nos primeiros ~210 caracteres (o que aparece antes do \"ver mais\").",
-    f"Máximo de {LIMITE_POST} caracteres no total; parágrafos curtos separados por linha em branco.",
-    "Nada de hashtags no corpo: elas vão em `hashtags` (3 a 5, com #).",
-    "`hooks_alternativos`: 2 aberturas alternativas (1-2 frases) que possam substituir o primeiro parágrafo.",
-    "`resumo_tecnico`: 2-3 frases objetivas; `destaques`: 2 a 5 pontos concretos.",
-    "Nunca invente métricas, usuários, clientes ou resultados que não estejam no material ou na conversa.",
-    "Se houver um post publicado anteriormente, não repita o assunto: foque no que mudou desde então.",
-    "Mostre o texto ao usuário e só chame `salvar_post` depois que ele aprovar (ou pedir para salvar).",
-]
-REGRAS_ARTIGO = [
-    "Use a skill `medium-article-writer` se ela estiver disponível nesta sessão; siga as regras dela.",
-    "Todo trecho de código no artigo deve ser copiado de um arquivo real do projeto, com o caminho indicado no texto.",
-    "Liste cada trecho em `trechos_de_codigo` com o caminho relativo à raiz do projeto e o intervalo de linhas "
-    "real (ex.: \"10-42\"): `salvar_artigo` confere cada um nos arquivos e recusa trechos inexistentes.",
-    "Onde faltar informação que só o autor tem (números, resultados, anedotas), pergunte ao usuário ou marque `TK: ...`.",
-    "`tags`: até 5; `subtitulo` obrigatório.",
-    "Mostre o artigo (ou um resumo e o título) ao usuário antes de chamar `salvar_artigo`.",
-]
+# Só o que é próprio do fluxo pelo MCP. As regras de escrita vêm de `prompts.montar_prompt_*` (as mesmas da
+# geração pela interface), no campo `instrucoes`.
+REGRA_INSTRUCOES = ("Escreva seguindo `instrucoes`: é o mesmo prompt que o Shiplog usa ao gerar pela interface "
+                    "(prompt base, perfil, voz, parâmetros, notas do autor e regras do resultado).")
 SCHEMA_POST = {
     "type": "object",
     "required": ["texto", "hashtags"],
@@ -62,6 +49,39 @@ SCHEMA_ARTIGO = {
         "sugestoes_de_imagens": {"type": "array", "items": {"type": "string"}},
     },
 }
+
+CHAVES_POST = ("tom", "tamanho", "idioma")
+CHAVES_ARTIGO = ("idioma", "publico", "formato")
+CONFIRMACOES = ("formulario", "recusada")
+
+
+def confirmacao_parametros(ferramenta: str, mapas: dict[str, dict[str, str]], informados: dict[str, Any] | None,
+                           params: dict[str, Any], confirmacao: str | None) -> dict[str, Any]:
+    """Diz ao modelo se os parâmetros foram escolhidos pelo usuário ou são só os padrões (spec 009 FR-23).
+
+    `confirmacao`: "formulario" (o usuário escolheu no formulário do MCP), "recusada" (fechou o formulário:
+    seguir com os padrões) ou None (sem formulário: o que não veio em `informados` precisa ser perguntado).
+    """
+    if confirmacao == "formulario":
+        return {"parametros_confirmados": True}
+    if confirmacao == "recusada":
+        return {"parametros_confirmados": False,
+                "aviso_parametros": "O usuário fechou o formulário de parâmetros sem escolher: siga com os valores "
+                                    "de `parametros` (padrões do Shiplog) e diga a ele quais usou."}
+    pendentes = [k for k in mapas if not (informados or {}).get(k)]
+    if not pendentes:
+        return {"parametros_confirmados": True}
+    return {
+        "parametros_confirmados": False,
+        "confirmar_parametros": {
+            "pendentes": pendentes,
+            "opcoes": {k: mapas[k] for k in pendentes},
+            "padrao": {k: params[k] for k in pendentes},
+            "instrucao": (f"ANTES de escrever, pergunte ao usuário os parâmetros em `pendentes` (mostre as opções e "
+                          f"o padrão de cada um, numa única pergunta) e chame `{ferramenta}` de novo com os valores "
+                          "escolhidos. Se ele disser para usar os padrões, chame de novo passando os padrões."),
+        },
+    }
 
 
 def _mini_post(v: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -97,13 +117,15 @@ class ContextService:
 
     # -- post -----------------------------------------------------------------
     def post(self, projeto_id: int | None = None, caminho: str | None = None, descricao: str | None = None,
-             parametros: dict[str, Any] | None = None, desde_commit: str | None = None) -> dict[str, Any]:
+             parametros: dict[str, Any] | None = None, desde_commit: str | None = None,
+             confirmacao: str | None = None, instrucoes_extras: str = "",
+             base_versao_id: int | None = None) -> dict[str, Any]:
         cfg = self.dao.config()
-        params = {**cfg["parametros_padrao_post"], **{k: v for k, v in (parametros or {}).items() if v}}
-        for k, mapa in (("tom", TONS), ("tamanho", TAMANHOS), ("idioma", IDIOMAS)):
-            if params.get(k) not in mapa:
-                raise AppError("validacao", f"Parâmetro '{k}' inválido: {params.get(k)!r}.",
-                               f"Valores aceitos: {', '.join(mapa)}.", 422)
+        params = {**cfg["parametros_padrao_post"], **{k: v for k, v in (parametros or {}).items() if v is not None}}
+        mapas = {"tom": TONS, "tamanho": TAMANHOS, "idioma": IDIOMAS}
+        self._validar(params, mapas)
+        params["incluir_link_artigo"] = bool(params.get("incluir_link_artigo", False))
+        link_art = titulo_art = None
         if descricao is not None and not caminho and projeto_id is None:
             if len(descricao.strip()) < MIN_DESCRICAO:
                 raise AppError("validacao", f"Descreva com pelo menos {MIN_DESCRICAO} caracteres.", None, 422)
@@ -122,32 +144,47 @@ class ContextService:
                     "Sem a pasta local deste projeto: passe `caminho` para incluir commits e alterações pendentes."]}
             ult = self.dao.ultima_versao("posts", projeto["id"])
             pub = self.dao.publicada("posts", projeto["id"])
+            art = self.dao.publicada("artigos", projeto["id"])
+            if params["incluir_link_artigo"] and art and art.get("link_medium"):
+                link_art, titulo_art = art["link_medium"], art["titulo"]
+        base = self._versao_base("posts", projeto, base_versao_id)
+        ctx = prompts.ContextoPrompt(
+            nome=projeto["nome"] if projeto else "Post sem repositório",
+            url=projeto["url_repo"] if projeto else None, branch=material.get("branch"),
+            commit=material.get("head"), notas=(projeto or {}).get("notas") or "", metadados=None,
+            prompt_base=cfg["prompt_base"], perfil_voz=cfg["perfil_voz"],
+            perfil_profissional=cfg["perfil_profissional"], parametros=params, instrucoes_extras=instrucoes_extras,
+            versao_anterior=base, link_artigo=link_art, titulo_artigo=titulo_art,
+            descricao=material.get("descricao", "") if material.get("tipo") == "descricao" else "",
+            modo="sessao", caminho=material.get("caminho"))
+        conf = confirmacao_parametros("post_context", mapas, parametros, params, confirmacao)
         return {
             "tarefa": "Escreva um post do LinkedIn sobre o trabalho descrito no material (e no que vocês fizeram nesta "
                       "conversa), em primeira pessoa, como o autor.",
             "projeto": self._resumo_projeto(projeto),
-            "prompt_base": (cfg["prompt_base"] or "").strip() or PROMPT_BASE_PADRAO,
-            **self._autor(),
             "parametros": params,
             "parametros_explicados": {"tom": TONS[params["tom"]], "tamanho": TAMANHOS[params["tamanho"]],
                                       "idioma": IDIOMAS[params["idioma"]]},
+            **conf,
+            "instrucoes": prompts.montar_prompt_post(ctx, SCHEMA_POST),
             "material": material,
+            "versao_base": base and {"id": base["id"], "versao": base["versao"]},
+            "artigo_publicado": ({"titulo": titulo_art, "link": link_art} if link_art else None),
             "ultimo_post": _mini_post(ult),
             "ultimo_post_publicado": _mini_post(pub),
-            "regras": REGRAS_POST,
+            "regras": self._regras(conf),
             "formato_salvar_post": SCHEMA_POST,
-            "proximo_passo": self._proximo("salvar_post", projeto, material),
+            "proximo_passo": self._proximo("save_post", projeto, material, conf, base, instrucoes_extras),
         }
 
     # -- artigo -----------------------------------------------------------------
     def artigo(self, projeto_id: int | None = None, caminho: str | None = None,
-               parametros: dict[str, Any] | None = None) -> dict[str, Any]:
+               parametros: dict[str, Any] | None = None, confirmacao: str | None = None,
+               instrucoes_extras: str = "", base_versao_id: int | None = None) -> dict[str, Any]:
         cfg = self.dao.config()
         params = {**cfg["parametros_padrao_artigo"], **{k: v for k, v in (parametros or {}).items() if v}}
-        for k, mapa in (("idioma", IDIOMAS), ("publico", PUBLICOS), ("formato", FORMATOS)):
-            if params.get(k) not in mapa:
-                raise AppError("validacao", f"Parâmetro '{k}' inválido: {params.get(k)!r}.",
-                               f"Valores aceitos: {', '.join(mapa)}.", 422)
+        mapas = {"idioma": IDIOMAS, "publico": PUBLICOS, "formato": FORMATOS}
+        self._validar(params, mapas)
         projeto, pasta = self._projeto(projeto_id, caminho)
         if projeto["origem"] == "livre":
             raise AppError("artigo_requer_repositorio", "Artigos precisam de um projeto com código.",
@@ -155,20 +192,45 @@ class ContextService:
         material = workspace.material(pasta, None).to_dict() if pasta else {
             "tipo": "projeto", "avisos": ["Passe `caminho` para incluir o estado atual do projeto."]}
         ult = self.dao.ultima_versao("artigos", projeto["id"])
+        base = self._versao_base("artigos", projeto, base_versao_id)
+        ctx = prompts.ContextoPrompt(
+            nome=projeto["nome"], url=projeto["url_repo"], branch=material.get("branch"), commit=material.get("head"),
+            notas=projeto.get("notas") or "", metadados=None, prompt_base=cfg["prompt_base"],
+            perfil_voz=cfg["perfil_voz"], perfil_profissional=cfg["perfil_profissional"], parametros=params,
+            instrucoes_extras=instrucoes_extras, versao_anterior=base, modo="sessao", caminho=material.get("caminho"))
+        conf = confirmacao_parametros("article_context", mapas, parametros, params, confirmacao)
         return {
             "tarefa": "Escreva um artigo para o Medium sobre este projeto, com trechos reais do código.",
             "projeto": self._resumo_projeto(projeto),
-            **self._autor(),
             "parametros": params,
             "parametros_explicados": {"idioma": IDIOMAS[params["idioma"]], "publico": PUBLICOS[params["publico"]],
                                       "formato": FORMATOS[params["formato"]]},
+            **conf,
+            "instrucoes": prompts.montar_prompt_artigo(ctx, SCHEMA_ARTIGO),
             "material": material,
+            "versao_base": base and {"id": base["id"], "versao": base["versao"]},
             "ultimo_artigo": ({"id": ult["id"], "versao": ult["versao"], "titulo": ult["titulo"], "status": ult["status"]}
                               if ult else None),
-            "regras": REGRAS_ARTIGO,
+            "regras": self._regras(conf),
             "formato_salvar_artigo": SCHEMA_ARTIGO,
-            "proximo_passo": self._proximo("salvar_artigo", projeto, material),
+            "proximo_passo": self._proximo("save_article", projeto, material, conf, base, instrucoes_extras),
         }
+
+    @staticmethod
+    def _validar(params: dict[str, Any], mapas: dict[str, dict[str, str]]) -> None:
+        for k, mapa in mapas.items():
+            if params.get(k) not in mapa:
+                raise AppError("validacao", f"Parâmetro '{k}' inválido: {params.get(k)!r}.",
+                               f"Valores aceitos: {', '.join(mapa)}.", 422)
+
+    def _versao_base(self, tabela: str, projeto: dict[str, Any] | None, vid: int | None) -> dict[str, Any] | None:
+        """Versão usada como referência num ajuste (igual a "Regenerar" na interface)."""
+        if vid is None:
+            return None
+        v = self.dao.versao(tabela, vid)
+        if not v or projeto is None or v["projeto_id"] != projeto["id"]:
+            raise AppError("nao_encontrado", f"Versão {vid} não encontrada neste projeto.", None, 404)
+        return v
 
     # -- comentário ------------------------------------------------------------
     def comentario(self, plataforma: str = "linkedin", parametros: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -190,8 +252,8 @@ class ContextService:
                 "resumo": "1-2 frases sobre o que o conteúdo diz",
                 "sugestoes": [{"abordagem": "rótulo curto", "texto": "comentário pronto"}],
             },
-            "proximo_passo": "Mostre as 3 opções ao usuário e chame `salvar_comentario` para registrá-las no Shiplog; "
-                             "quando ele disser qual usou, chame `marcar_comentario_usado`.",
+            "proximo_passo": "Mostre as 3 opções ao usuário e chame `save_comment` para registrá-las no Shiplog; "
+                             "quando ele disser qual usou, chame `mark_comment_used`.",
         }
 
     # -- utilitários -----------------------------------------------------------
@@ -202,8 +264,21 @@ class ContextService:
                 "link_shiplog": self.link_projeto(p["id"])}
 
     @staticmethod
-    def _proximo(tool: str, projeto: dict[str, Any] | None, material: dict[str, Any]) -> str:
+    def _regras(conf: dict[str, Any]) -> list[str]:
+        if "confirmar_parametros" in conf:
+            return [conf["confirmar_parametros"]["instrucao"], REGRA_INSTRUCOES]
+        return [REGRA_INSTRUCOES]
+
+    @staticmethod
+    def _proximo(tool: str, projeto: dict[str, Any] | None, material: dict[str, Any],
+                 conf: dict[str, Any] | None = None, base: dict[str, Any] | None = None,
+                 extras: str = "") -> str:
+        if conf and "confirmar_parametros" in conf:
+            return conf["confirmar_parametros"]["instrucao"]
         alvo = f"projeto_id={projeto['id']}" if projeto else "descricao=<a mesma descrição>"
         ref = f", commit_referencia=\"{material['head']}\"" if material.get("head") else ""
+        ref += f", base_versao_id={base['id']}" if base else ""
+        ref += ", parametros=<o objeto `parametros` desta resposta>"
+        ref += ", instrucoes_extras=<as mesmas instruções extras>" if extras else ""
         return (f"Escreva, mostre ao usuário, ajuste se ele pedir e então chame `{tool}` com {alvo}{ref}. "
                 "Depois mostre o link do Shiplog para ele revisar.")
